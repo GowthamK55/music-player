@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fusion</title>
+</head>
+<body>
+
+  <h1>Fusion</h1>
+  <p>- Connecting People with Music Without Interruptions</p>
+
+  <!-- Form for uploading music files -->
+  <form id="uploadForm" enctype="multipart/form-data">
+    <label for="musicFile">Choose a music file:</label>
+    <input type="file" id="musicFile" name="musicFile" accept=".mp3">
+    <button type="button" onclick="uploadAndStore()">Upload and Play</button>
+    <button type="button" onclick="removeFile()">Remove</button>
+  </form>
+
+  <!-- Display the playlist -->
+  <div id="playlist">
+    <h2>Playlist</h2>
+    <ul id="playlistItems"></ul>
+  </div>
+
+  <!-- Display the currently playing song -->
+  <div id="nowPlaying">
+    <h2>Now Playing</h2>
+    <!-- Audio element for playback with event listener for song completion -->
+    <audio id="audioPlayer" controls onended="playNext()"></audio>
+  </div>
+
+  <!-- JavaScript code -->
+  <script>
+    // Initialize variables
+    var db;
+    var playlist = [];
+    var nowPlayingIndex = null;
+    var currentTime = 0;
+
+    // Open or create an IndexedDB database
+    var request = indexedDB.open('AudioPlayerDB', 1);
+
+    request.onupgradeneeded = function(event) {
+      // Create an object store in the database
+      db = event.target.result;
+      var objectStore = db.createObjectStore('playlist', { keyPath: 'id', autoIncrement: true });
+      objectStore.createIndex('name', 'name', { unique: false });
+    };
+
+    request.onsuccess = function(event) {
+      // Database opened successfully, load the playlist
+      db = event.target.result;
+      loadPlaylistFromDB();
+    };
+
+    request.onerror = function(event) {
+      console.error('Error opening database:', event.target.errorCode);
+    };
+
+    // Load the playlist from IndexedDB
+    function loadPlaylistFromDB() {
+      var transaction = db.transaction(['playlist'], 'readonly');
+      var objectStore = transaction.objectStore('playlist');
+      var request = objectStore.getAll();
+
+      request.onsuccess = function(event) {
+        playlist = event.target.result || [];
+        updatePlaylist();
+      };
+
+      request.onerror = function(event) {
+        console.error('Error loading playlist from IndexedDB:', event.target.errorCode);
+      };
+    }
+
+    // Upload and store a music file
+    function uploadAndStore() {
+      var fileInput = document.getElementById('musicFile');
+      var file = fileInput.files[0];
+
+      if (file) {
+        var reader = new FileReader();
+
+        reader.onload = function(event) {
+          var audioContent = event.target.result;
+
+          // Create a song object and add it to the playlist
+          var song = { name: file.name, content: audioContent };
+          playlist.push(song);
+
+          // Store the song in IndexedDB
+          storeSongInDB(song);
+          updatePlaylist();
+
+          if (playlist.length === 1) {
+            nowPlayingIndex = 0;
+            playAudio();
+          }
+        };
+
+        reader.readAsDataURL(file);
+      } else {
+        alert('Please choose a music file before uploading.');
+      }
+    }
+
+    // Store a song in IndexedDB
+    function storeSongInDB(song) {
+      var transaction = db.transaction(['playlist'], 'readwrite');
+      var objectStore = transaction.objectStore('playlist');
+      var request = objectStore.add(song);
+
+      request.onsuccess = function() {
+        console.log('Song added to IndexedDB:', song);
+      };
+
+      request.onerror = function(event) {
+        console.error('Error storing song in IndexedDB:', event.target.errorCode);
+      };
+    }
+
+    // Play the currently selected audio
+    function playAudio() {
+      var audioPlayer = document.getElementById('audioPlayer');
+
+      if (nowPlayingIndex !== null && nowPlayingIndex < playlist.length) {
+        audioPlayer.src = playlist[nowPlayingIndex].content;
+
+        var nowPlaying = document.getElementById('nowPlaying');
+        nowPlaying.querySelector('h2').textContent = 'Now Playing: ' + playlist[nowPlayingIndex].name;
+
+        audioPlayer.currentTime = currentTime;
+        audioPlayer.play();
+      }
+    }
+
+    // Play the next song in the playlist
+    function playNext() {
+      if (nowPlayingIndex !== null && nowPlayingIndex < playlist.length - 1) {
+        nowPlayingIndex++;
+        currentTime = 0;
+        playAudio();
+      } else {
+        nowPlayingIndex = null;
+        currentTime = 0;
+      }
+    }
+
+    // Update the displayed playlist
+    function updatePlaylist() {
+      var playlistItems = document.getElementById('playlistItems');
+      playlistItems.innerHTML = '';
+
+      playlist.forEach(function(song, index) {
+        var listItem = document.createElement('li');
+        listItem.textContent = song.name;
+
+        listItem.addEventListener('click', function() {
+          nowPlayingIndex = index;
+          currentTime = 0;
+          playAudio();
+        });
+
+        playlistItems.appendChild(listItem);
+      });
+    }
+
+    // Remove the chosen file
+    function removeFile() {
+      var fileInput = document.getElementById('musicFile');
+      fileInput.value = '';
+    }
+  </script>
+
+</body>
+</html>
